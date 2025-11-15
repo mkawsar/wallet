@@ -66,6 +66,12 @@ class TransactionRepositoryTest extends TestCase
             ->andReturnSelf();
 
         $queryMock
+            ->shouldReceive('orderBy')
+            ->once()
+            ->with('id', 'desc')
+            ->andReturnSelf();
+
+        $queryMock
             ->shouldReceive('paginate')
             ->once()
             ->with($perPage)

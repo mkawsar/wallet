@@ -61,26 +61,51 @@ class TransactionService
         $commissionFee = round($amount * self::COMMISSION_RATE, 2);
         $totalDebit = $amount + $commissionFee;
 
-        // Use database transaction to ensure atomicity
+        // Use database transaction with proper isolation level for high concurrency
         try {
+            // Set transaction isolation level to READ COMMITTED for better concurrency
+            // This allows multiple transactions to proceed while maintaining data integrity
+            // Note: Some databases may not support this, so we catch any exceptions
+            try {
+                DB::statement('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
+            } catch (\Exception $e) {
+                // Ignore if isolation level setting is not supported
+                // The default isolation level will be used
+            }
             DB::beginTransaction();
 
-            // Lock sender and receiver rows for update to prevent race conditions
-            $sender = $this->userRepository->lockForUpdate($senderId);
-            if (! $sender) {
+            // Lock users in consistent order (by ID) to prevent deadlocks
+            // This is critical for handling hundreds of concurrent transfers per second
+            // Always lock the user with the smaller ID first to prevent circular wait conditions
+            $firstUserId = min($senderId, $receiverId);
+            $secondUserId = max($senderId, $receiverId);
+
+            $firstUser = $this->userRepository->lockForUpdate($firstUserId);
+            $secondUser = $this->userRepository->lockForUpdate($secondUserId);
+
+            // Assign sender and receiver based on which was locked first
+            if ($firstUserId === $senderId) {
+                $sender = $firstUser;
+                $receiver = $secondUser;
+            } else {
+                $sender = $secondUser;
+                $receiver = $firstUser;
+            }
+
+            // Validate users exist and are correct
+            if (! $sender || ! ($sender instanceof \App\Models\User) || $sender->id !== $senderId) {
                 throw ValidationException::withMessages([
                     'sender_id' => ['Sender not found.'],
                 ]);
             }
 
-            $receiver = $this->userRepository->lockForUpdate($receiverId);
-            if (! $receiver) {
+            if (! $receiver || ! ($receiver instanceof \App\Models\User) || $receiver->id !== $receiverId) {
                 throw ValidationException::withMessages([
                     'receiver_id' => ['Receiver not found.'],
                 ]);
             }
 
-            // Validate sender has sufficient balance
+            // Validate sender has sufficient balance (double-check after locking)
             if ($sender->balance < $totalDebit) {
                 throw ValidationException::withMessages([
                     'amount' => [
@@ -90,7 +115,8 @@ class TransactionService
                 ]);
             }
 
-            // Update balances
+            // Update balances atomically using database-level operations
+            // This prevents race conditions even with hundreds of concurrent transfers per second
             $this->userRepository->updateBalance($sender, -$totalDebit);
             $this->userRepository->updateBalance($receiver, $amount);
 

@@ -88,6 +88,7 @@ class TransactionServiceTest extends TestCase
     public function test_execute_transfer_successfully(): void
     {
         Event::fake();
+        DB::shouldReceive('statement')->once()->andReturn(true);
         DB::shouldReceive('beginTransaction')->once();
         DB::shouldReceive('commit')->once();
         DB::shouldReceive('rollBack')->never();
@@ -131,17 +132,17 @@ class TransactionServiceTest extends TestCase
             ->with($receiverId)
             ->andReturn($receiver);
 
-        // Mock locked users
+        // Mock locked users (locked in ascending ID order: senderId=1, receiverId=2)
         $this->userRepositoryMock
             ->shouldReceive('lockForUpdate')
             ->once()
-            ->with($senderId)
+            ->with($senderId) // min(1, 2) = 1
             ->andReturn($sender);
 
         $this->userRepositoryMock
             ->shouldReceive('lockForUpdate')
             ->once()
-            ->with($receiverId)
+            ->with($receiverId) // max(1, 2) = 2
             ->andReturn($receiver);
 
         // Mock balance updates
@@ -243,6 +244,7 @@ class TransactionServiceTest extends TestCase
 
     public function test_execute_transfer_throws_exception_when_insufficient_balance(): void
     {
+        DB::shouldReceive('statement')->once()->andReturn(true);
         DB::shouldReceive('beginTransaction')->once();
         DB::shouldReceive('rollBack')->once();
 
@@ -290,6 +292,7 @@ class TransactionServiceTest extends TestCase
 
     public function test_execute_transfer_rolls_back_on_exception(): void
     {
+        DB::shouldReceive('statement')->once()->andReturn(true);
         DB::shouldReceive('beginTransaction')->once();
         DB::shouldReceive('rollBack')->once();
 
