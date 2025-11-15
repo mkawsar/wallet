@@ -2,15 +2,28 @@
     <div class="min-h-screen bg-gray-50 py-8">
         <div class="max-w-4xl mx-auto px-4">
             <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <h1 class="text-3xl font-bold text-gray-900 mb-2">Mini Wallet</h1>
-                <div class="flex items-center justify-between">
+                <div class="flex items-start justify-between mb-4">
                     <div>
+                        <h1 class="text-3xl font-bold text-gray-900 mb-2">Mini Wallet</h1>
                         <p class="text-sm text-gray-600">Welcome, {{ user?.name }}</p>
                         <p class="text-xs text-gray-500">{{ user?.email }}</p>
                     </div>
                     <div class="text-right">
-                        <p class="text-sm text-gray-600">Current Balance</p>
-                        <p class="text-2xl font-bold text-green-600">{{ formatCurrency(balance) }}</p>
+                        <!-- Logout Button -->
+                        <form id="logoutForm" method="POST" action="/logout" class="mb-3">
+                            <input type="hidden" name="_token" :value="getCsrfToken()">
+                            <button
+                                type="submit"
+                                class="bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 text-sm font-medium"
+                            >
+                                Logout
+                            </button>
+                        </form>
+                        <!-- Balance Display -->
+                        <div>
+                            <p class="text-sm text-gray-600">Current Balance</p>
+                            <p class="text-2xl font-bold text-green-600">{{ formatCurrency(balance) }}</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -119,19 +132,6 @@
                 <div v-if="message" class="mt-4 p-3 rounded-md" :class="messageType === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
                     {{ message }}
                 </div>
-            </div>
-
-            <!-- Logout Button -->
-            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <form id="logoutForm" method="POST" action="/logout">
-                    <input type="hidden" name="_token" :value="getCsrfToken()">
-                    <button
-                        type="submit"
-                        class="w-full bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-                    >
-                        Logout
-                    </button>
-                </form>
             </div>
 
             <!-- Transaction History -->
