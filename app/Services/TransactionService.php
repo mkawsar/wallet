@@ -84,8 +84,8 @@ class TransactionService
             if ($sender->balance < $totalDebit) {
                 throw ValidationException::withMessages([
                     'amount' => [
-                        'Insufficient balance. Required: '.number_format($totalDebit, 2).
-                        ', Available: '.number_format($sender->balance, 2),
+                        'Insufficient balance. Required: '.number_format((float) $totalDebit, 2).
+                        ', Available: '.number_format((float) $sender->balance, 2),
                     ],
                 ]);
             }
@@ -102,8 +102,9 @@ class TransactionService
                 $commissionFee
             );
 
-            // Refresh sender to get updated balance
+            // Refresh both sender and receiver to get updated balances
             $sender->refresh();
+            $receiver->refresh();
 
             DB::commit();
 
@@ -112,10 +113,30 @@ class TransactionService
 
             // Broadcast event to both sender and receiver (synchronously for immediate delivery)
             try {
-                broadcast(new TransactionCompleted($transaction))->toOthers();
+                $broadcastDriver = config('broadcasting.default');
+                \Log::info('Broadcasting transaction', [
+                    'transaction_id' => $transaction->id,
+                    'sender_id' => $transaction->sender_id,
+                    'receiver_id' => $transaction->receiver_id,
+                    'broadcast_driver' => $broadcastDriver,
+                    'pusher_key' => $broadcastDriver === 'pusher' ? (config('broadcasting.connections.pusher.key') ? 'configured' : 'missing') : 'n/a',
+                ]);
+
+                // Broadcast synchronously (not queued) to ensure immediate delivery
+                $event = new TransactionCompleted($transaction);
+                broadcast($event);
+
+                \Log::info('Transaction broadcast sent successfully', [
+                    'transaction_id' => $transaction->id,
+                    'channels' => ['user.'.$transaction->sender_id, 'user.'.$transaction->receiver_id],
+                ]);
             } catch (\Exception $e) {
                 // Log but don't fail the transaction if broadcasting fails
-                \Log::error('Broadcasting failed: ' . $e->getMessage());
+                \Log::error('Broadcasting failed', [
+                    'transaction_id' => $transaction->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
             }
 
             return [

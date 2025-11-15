@@ -7,6 +7,24 @@
                     <div>
                         <p class="text-sm text-gray-600">Welcome, {{ user?.name }}</p>
                         <p class="text-xs text-gray-500">{{ user?.email }}</p>
+                        <!-- Pusher Connection Status -->
+                        <div class="mt-2 flex items-center gap-2">
+                            <span class="text-xs font-medium">Pusher:</span>
+                            <span 
+                                class="text-xs px-2 py-1 rounded"
+                                :class="{
+                                    'bg-green-100 text-green-800': pusherConnectionStatus === 'connected' || pusherConnectionStatus === 'subscribed',
+                                    'bg-yellow-100 text-yellow-800': pusherConnectionStatus === 'connecting',
+                                    'bg-red-100 text-red-800': pusherConnectionStatus === 'error' || pusherConnectionStatus === 'disconnected',
+                                    'bg-gray-100 text-gray-800': pusherConnectionStatus === 'not_configured' || pusherConnectionStatus === 'no_token'
+                                }"
+                            >
+                                {{ pusherConnectionStatus === 'subscribed' ? 'Connected & Subscribed' : pusherConnectionStatus }}
+                            </span>
+                            <span v-if="pusherConnectionError" class="text-xs text-red-600" :title="pusherConnectionError">
+                                ⚠️
+                            </span>
+                        </div>
                     </div>
                     <div class="text-right">
                         <p class="text-sm text-gray-600">Current Balance</p>
@@ -205,11 +223,31 @@ window.Pusher = Pusher;
 
 // Initialize Echo - will be set up after user loads
 let echo = null;
+const pusherConnectionStatus = ref('disconnected');
+const pusherConnectionError = ref('');
 
 const initializeEcho = () => {
     if (!authToken || authToken === 'null' || authToken === '') {
+        console.warn('Cannot initialize Echo: No auth token');
+        pusherConnectionStatus.value = 'no_token';
         return;
     }
+
+    const pusherKey = import.meta.env.VITE_PUSHER_APP_KEY;
+    const pusherCluster = import.meta.env.VITE_PUSHER_APP_CLUSTER || 'mt1';
+
+    if (!pusherKey || pusherKey === 'your-pusher-key') {
+        console.error('Pusher key not configured. Please set VITE_PUSHER_APP_KEY in your .env file.');
+        pusherConnectionStatus.value = 'not_configured';
+        pusherConnectionError.value = 'Pusher key not configured';
+        return;
+    }
+
+    console.log('Initializing Pusher with:', {
+        key: pusherKey ? `${pusherKey.substring(0, 10)}...` : 'missing',
+        cluster: pusherCluster,
+        authEndpoint: '/broadcasting/auth'
+    });
 
     // Disconnect existing connection if any
     if (echo) {
@@ -221,10 +259,13 @@ const initializeEcho = () => {
     }
 
     try {
+        pusherConnectionStatus.value = 'connecting';
+        pusherConnectionError.value = '';
+
         echo = new Echo({
             broadcaster: 'pusher',
-            key: import.meta.env.VITE_PUSHER_APP_KEY || 'your-pusher-key',
-            cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER || 'mt1',
+            key: pusherKey,
+            cluster: pusherCluster,
             forceTLS: true,
             encrypted: true,
             authEndpoint: '/broadcasting/auth',
@@ -234,10 +275,45 @@ const initializeEcho = () => {
                     Accept: 'application/json',
                 },
             },
+            enabledTransports: ['ws', 'wss'],
         });
+
+        // Monitor Pusher connection state
+        const pusher = echo.connector.pusher;
+
+        pusher.connection.bind('connected', () => {
+            console.log('✅ Pusher connected successfully');
+            pusherConnectionStatus.value = 'connected';
+            pusherConnectionError.value = '';
+        });
+
+        pusher.connection.bind('disconnected', () => {
+            console.warn('⚠️ Pusher disconnected');
+            pusherConnectionStatus.value = 'disconnected';
+        });
+
+        pusher.connection.bind('error', (error) => {
+            console.error('❌ Pusher connection error:', error);
+            pusherConnectionStatus.value = 'error';
+            pusherConnectionError.value = error?.error?.message || error?.message || 'Connection error';
+        });
+
+        pusher.connection.bind('state_change', (states) => {
+            console.log('Pusher state change:', states.previous, '->', states.current);
+            if (states.current === 'connected') {
+                pusherConnectionStatus.value = 'connected';
+            } else if (states.current === 'disconnected') {
+                pusherConnectionStatus.value = 'disconnected';
+            } else if (states.current === 'failed') {
+                pusherConnectionStatus.value = 'error';
+            }
+        });
+
         console.log('Echo initialized successfully');
     } catch (error) {
-        console.error('Error initializing Pusher:', error);
+        console.error('❌ Error initializing Pusher:', error);
+        pusherConnectionStatus.value = 'error';
+        pusherConnectionError.value = error.message || 'Initialization error';
     }
 };
 
@@ -470,34 +546,105 @@ const setupRealtimeListener = () => {
         return;
     }
 
-    try {
-        const channelName = `user.${user.value.id}`;
-        console.log('Setting up listener for channel:', channelName);
-        
-        const channel = echo.private(channelName);
-
-        channel.listen('.transaction.completed', (data) => {
-            console.log('Transaction completed event received:', data);
-            const transaction = data.transaction;
-
-            // Update balance if this transaction affects the user
-            if (transaction.sender_id === user.value.id || transaction.receiver_id === user.value.id) {
-                // Reload transactions to get updated balance
-                loadTransactions();
-            }
+    // Wait for Pusher to be connected before subscribing
+    const pusher = echo.connector.pusher;
+    
+    if (pusher.connection.state !== 'connected') {
+        console.log('Waiting for Pusher connection...');
+        pusher.connection.bind('connected', () => {
+            console.log('Pusher connected, setting up listener now...');
+            subscribeToChannel();
         });
+    } else {
+        subscribeToChannel();
+    }
 
-        // Listen for subscription success
-        channel.subscribed(() => {
-            console.log('Subscribed to channel:', channelName);
-        });
+    function subscribeToChannel() {
+        try {
+            const channelName = `private-user.${user.value.id}`;
+            console.log('🔔 Setting up listener for channel:', channelName);
+            console.log('Current Pusher state:', pusher.connection.state);
+            
+            const channel = echo.private(channelName);
 
-        // Listen for subscription errors
-        channel.error((error) => {
-            console.error('Channel subscription error:', error);
-        });
-    } catch (error) {
-        console.error('Error setting up real-time listener:', error);
+            // Listen for subscription success
+            channel.subscribed(() => {
+                console.log('✅ Successfully subscribed to channel:', channelName);
+                pusherConnectionStatus.value = 'subscribed';
+            });
+
+            // Listen for subscription errors
+            channel.error((error) => {
+                console.error('❌ Channel subscription error:', error);
+                pusherConnectionError.value = `Subscription error: ${error?.message || JSON.stringify(error)}`;
+            });
+
+            // Listen for the transaction completed event
+            // Note: Laravel Echo automatically prefixes with the app name, but we use .transaction.completed
+            // The actual event name from broadcastAs() is 'transaction.completed'
+            channel.listen('.transaction.completed', (data) => {
+                console.log('🎉 Transaction completed event received:', data);
+                console.log('Event data transaction:', data.transaction);
+                
+                const transaction = data.transaction;
+
+                // Update balance and history if this transaction affects the user
+                if (transaction.sender_id === user.value.id || transaction.receiver_id === user.value.id) {
+                    console.log('Transaction affects current user, updating UI...');
+                    
+                    // Check if transaction already exists in the list (to avoid duplicates)
+                    const existingIndex = transactions.value.findIndex(t => t.id === transaction.id);
+                    
+                    if (existingIndex === -1) {
+                        // Add transaction to the top of the list immediately
+                        console.log('Adding new transaction to list');
+                        transactions.value.unshift(transaction);
+                    } else {
+                        // Update existing transaction
+                        console.log('Updating existing transaction in list');
+                        transactions.value[existingIndex] = transaction;
+                    }
+                    
+                    // Reload user data and transactions to get updated balance
+                    // This ensures both sender and receiver see the correct updated balance
+                    Promise.all([
+                        loadUser(),
+                        loadTransactions()
+                    ]).catch(error => {
+                        console.error('Error refreshing data after transaction:', error);
+                        // Fallback: just reload transactions
+                        loadTransactions();
+                    });
+                } else {
+                    console.log('Transaction does not affect current user');
+                }
+            });
+
+            // Also try listening without the dot prefix (some configurations)
+            channel.listen('transaction.completed', (data) => {
+                console.log('🎉 Transaction completed event received (without dot):', data);
+                // Same handling as above
+                const transaction = data.transaction;
+                if (transaction.sender_id === user.value.id || transaction.receiver_id === user.value.id) {
+                    const existingIndex = transactions.value.findIndex(t => t.id === transaction.id);
+                    if (existingIndex === -1) {
+                        transactions.value.unshift(transaction);
+                    } else {
+                        transactions.value[existingIndex] = transaction;
+                    }
+                    Promise.all([loadUser(), loadTransactions()]).catch(() => loadTransactions());
+                }
+            });
+
+            // Debug: Log all events on this channel
+            channel.listenToAll((eventName, data) => {
+                console.log('📡 Event received on channel:', eventName, data);
+            });
+
+        } catch (error) {
+            console.error('❌ Error setting up real-time listener:', error);
+            pusherConnectionError.value = `Listener setup error: ${error.message}`;
+        }
     }
 };
 

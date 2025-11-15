@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\BroadcastingController;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -57,7 +58,9 @@ Route::post('/logout', function (Request $request) {
 })->name('logout');
 
 // Broadcasting authentication routes
-Broadcast::routes(['middleware' => ['web', 'auth:sanctum']]);
+// Use custom controller to ensure JSON responses
+Route::post('/broadcasting/auth', [BroadcastingController::class, 'authenticate'])
+    ->middleware(['web', 'auth:sanctum']);
 
 // Wallet route (requires authentication)
 Route::middleware('auth')->get('/wallet', function (Request $request) {
