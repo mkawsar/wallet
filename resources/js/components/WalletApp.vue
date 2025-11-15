@@ -143,32 +143,134 @@
                 <div v-else-if="transactions.length === 0" class="text-center py-8">
                     <p class="text-gray-600">No transactions yet</p>
                 </div>
-                <div v-else class="space-y-3">
-                    <div
-                        v-for="transaction in transactions"
-                        :key="transaction.id"
-                        class="border border-gray-200 rounded-md p-4"
-                        :class="transaction.sender_id === user?.id ? 'bg-red-50' : 'bg-green-50'"
-                    >
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <p class="font-medium text-gray-900">
-                                    {{ transaction.sender_id === user?.id ? 'Sent to' : 'Received from' }}
-                                    {{ transaction.sender_id === user?.id ? transaction.receiver?.name : transaction.sender?.name }}
-                                </p>
-                                <p class="text-sm text-gray-600">{{ transaction.receiver?.email || transaction.sender?.email }}</p>
-                                <p class="text-xs text-gray-500 mt-1">{{ formatDate(transaction.created_at) }}</p>
+                <div v-else>
+                    <div class="space-y-3 mb-4">
+                        <div
+                            v-for="transaction in transactions"
+                            :key="transaction.id"
+                            class="border border-gray-200 rounded-md p-4"
+                            :class="transaction.sender_id === user?.id ? 'bg-red-50' : 'bg-green-50'"
+                        >
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="font-medium text-gray-900">
+                                        {{ transaction.sender_id === user?.id ? 'Sent to' : 'Received from' }}
+                                        {{ transaction.sender_id === user?.id ? transaction.receiver?.name : transaction.sender?.name }}
+                                    </p>
+                                    <p class="text-sm text-gray-600">{{ transaction.receiver?.email || transaction.sender?.email }}</p>
+                                    <p class="text-xs text-gray-500 mt-1">{{ formatDate(transaction.created_at) }}</p>
+                                </div>
+                                <div class="text-right">
+                                    <p
+                                        class="text-lg font-bold"
+                                        :class="transaction.sender_id === user?.id ? 'text-red-600' : 'text-green-600'"
+                                    >
+                                        {{ transaction.sender_id === user?.id ? '-' : '+' }}{{ formatCurrency(transaction.amount) }}
+                                    </p>
+                                    <p v-if="transaction.sender_id === user?.id" class="text-xs text-gray-500">
+                                        Fee: {{ formatCurrency(transaction.commission_fee) }}
+                                    </p>
+                                </div>
                             </div>
-                            <div class="text-right">
-                                <p
-                                    class="text-lg font-bold"
-                                    :class="transaction.sender_id === user?.id ? 'text-red-600' : 'text-green-600'"
+                        </div>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    <div v-if="paginationMeta && paginationMeta.last_page > 1" class="border-t border-gray-200 pt-4">
+                        <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div class="text-sm text-gray-700">
+                                Showing {{ paginationMeta.from }} to {{ paginationMeta.to }} of {{ paginationMeta.total }} results
+                            </div>
+                            <div class="flex items-center gap-1 flex-wrap justify-center">
+                                <!-- First Page Button -->
+                                <button
+                                    v-if="paginationMeta.last_page > 7 && paginationMeta.current_page > 3"
+                                    @click="loadPage(1)"
+                                    :disabled="loadingTransactions"
+                                    class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="First page"
                                 >
-                                    {{ transaction.sender_id === user?.id ? '-' : '+' }}{{ formatCurrency(transaction.amount) }}
-                                </p>
-                                <p v-if="transaction.sender_id === user?.id" class="text-xs text-gray-500">
-                                    Fee: {{ formatCurrency(transaction.commission_fee) }}
-                                </p>
+                                    1
+                                </button>
+                                <span
+                                    v-if="paginationMeta.last_page > 7 && paginationMeta.current_page > 4"
+                                    class="px-2 text-gray-500"
+                                >
+                                    ...
+                                </span>
+                                
+                                <!-- Previous Button -->
+                                <button
+                                    @click="loadPage(paginationMeta.current_page - 1)"
+                                    :disabled="paginationMeta.current_page === 1 || loadingTransactions"
+                                    class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Previous
+                                </button>
+                                
+                                <!-- Page Numbers -->
+                                <div class="flex items-center gap-1">
+                                    <button
+                                        v-for="page in visiblePages"
+                                        :key="page"
+                                        @click="loadPage(page)"
+                                        :disabled="loadingTransactions"
+                                        class="px-3 py-2 text-sm font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed min-w-[40px]"
+                                        :class="page === paginationMeta.current_page
+                                            ? 'bg-blue-600 text-white'
+                                            : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'"
+                                    >
+                                        {{ page }}
+                                    </button>
+                                </div>
+                                
+                                <!-- Next Button -->
+                                <button
+                                    @click="loadPage(paginationMeta.current_page + 1)"
+                                    :disabled="paginationMeta.current_page === paginationMeta.last_page || loadingTransactions"
+                                    class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Next
+                                </button>
+                                
+                                <span
+                                    v-if="paginationMeta.last_page > 7 && paginationMeta.current_page < paginationMeta.last_page - 3"
+                                    class="px-2 text-gray-500"
+                                >
+                                    ...
+                                </span>
+                                
+                                <!-- Last Page Button -->
+                                <button
+                                    v-if="paginationMeta.last_page > 7 && paginationMeta.current_page < paginationMeta.last_page - 2"
+                                    @click="loadPage(paginationMeta.last_page)"
+                                    :disabled="loadingTransactions"
+                                    class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Last page"
+                                >
+                                    {{ paginationMeta.last_page }}
+                                </button>
+                            </div>
+                            
+                            <!-- Page Input (for large page counts) -->
+                            <div v-if="paginationMeta.last_page > 10" class="flex items-center gap-2">
+                                <span class="text-sm text-gray-700">Go to:</span>
+                                <input
+                                    v-model.number="goToPage"
+                                    @keyup.enter="goToPageNumber"
+                                    type="number"
+                                    min="1"
+                                    :max="paginationMeta.last_page"
+                                    class="w-16 px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Page"
+                                />
+                                <button
+                                    @click="goToPageNumber"
+                                    :disabled="loadingTransactions || !goToPage || goToPage < 1 || goToPage > paginationMeta.last_page"
+                                    class="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Go
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -179,7 +281,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
@@ -293,6 +395,10 @@ const initializeEcho = () => {
 const user = ref(null);
 const balance = ref(0);
 const transactions = ref([]);
+const paginationMeta = ref(null);
+const currentPage = ref(1);
+const perPage = ref(10);
+const goToPage = ref(null);
 const loading = ref(false);
 const loadingTransactions = ref(false);
 const message = ref('');
@@ -422,16 +528,32 @@ const loadUser = async () => {
 };
 
 // Load transactions
-const loadTransactions = async () => {
+const loadTransactions = async (page = 1) => {
     if (!authToken) {
         loadingTransactions.value = false;
         return;
     }
     loadingTransactions.value = true;
     try {
-        const response = await axios.get('/api/transactions');
+        const response = await axios.get('/api/transactions', {
+            params: {
+                page: page,
+                per_page: perPage.value,
+            },
+        });
         balance.value = response.data.balance;
         transactions.value = response.data.transactions.data || response.data.transactions;
+        
+        // Store pagination metadata and links
+        if (response.data.transactions.meta) {
+            paginationMeta.value = {
+                ...response.data.transactions.meta,
+                links: response.data.transactions.links || {},
+            };
+            currentPage.value = response.data.transactions.meta.current_page;
+        } else {
+            paginationMeta.value = null;
+        }
     } catch (error) {
         if (error.response?.status === 401) {
             // Clear invalid token
@@ -444,6 +566,59 @@ const loadTransactions = async () => {
     } finally {
         loadingTransactions.value = false;
     }
+};
+
+// Load specific page
+const loadPage = (page) => {
+    if (page < 1 || (paginationMeta.value && page > paginationMeta.value.last_page)) {
+        return;
+    }
+    loadTransactions(page);
+};
+
+// Compute visible page numbers for pagination
+const visiblePages = computed(() => {
+    if (!paginationMeta.value) return [];
+    
+    const current = paginationMeta.value.current_page;
+    const last = paginationMeta.value.last_page;
+    const pages = [];
+    
+    // For small page counts, show all pages
+    if (last <= 7) {
+        for (let i = 1; i <= last; i++) {
+            pages.push(i);
+        }
+        return pages;
+    }
+    
+    // For large page counts, show pages around current
+    let start = Math.max(1, current - 1);
+    let end = Math.min(last, current + 1);
+    
+    // Always show at least 3 pages
+    if (end - start < 2) {
+        if (start === 1) {
+            end = Math.min(last, 3);
+        } else if (end === last) {
+            start = Math.max(1, last - 2);
+        }
+    }
+    
+    for (let i = start; i <= end; i++) {
+        pages.push(i);
+    }
+    
+    return pages;
+});
+
+// Go to specific page number
+const goToPageNumber = () => {
+    if (!goToPage.value || goToPage.value < 1 || goToPage.value > paginationMeta.value.last_page) {
+        return;
+    }
+    loadPage(goToPage.value);
+    goToPage.value = null;
 };
 
 // Send money
@@ -472,7 +647,18 @@ const sendMoney = async () => {
             amount: transferForm.value.amount,
         });
         balance.value = response.data.new_balance;
-        transactions.value.unshift(response.data.transaction);
+        
+        // Add transaction to the top of the list if we're on the first page
+        if (currentPage.value === 1) {
+            transactions.value.unshift(response.data.transaction);
+            // Remove last item if we exceed per page limit
+            if (transactions.value.length > perPage.value) {
+                transactions.value.pop();
+            }
+        } else {
+            // If not on first page, reload first page to show new transaction
+            loadTransactions(1);
+        }
 
         // Show success message
         message.value = response.data.message;
@@ -595,8 +781,17 @@ const setupRealtimeListener = () => {
                     const existingIndex = transactions.value.findIndex(t => t.id === transaction.id);
                     
                     if (existingIndex === -1) {
-                        // Add transaction to the top of the list immediately
-                        transactions.value.unshift(transaction);
+                        // Add transaction to the top of the list if we're on the first page
+                        if (currentPage.value === 1) {
+                            transactions.value.unshift(transaction);
+                            // Remove last item if we exceed per page limit
+                            if (transactions.value.length > perPage.value) {
+                                transactions.value.pop();
+                            }
+                        } else {
+                            // If not on first page, reload first page to show new transaction
+                            loadTransactions(1);
+                        }
                     } else {
                         // Update existing transaction
                         transactions.value[existingIndex] = transaction;
@@ -637,7 +832,17 @@ const setupRealtimeListener = () => {
                     if (transaction.sender_id === user.value.id || transaction.receiver_id === user.value.id) {
                         const existingIndex = transactions.value.findIndex(t => t.id === transaction.id);
                         if (existingIndex === -1) {
-                            transactions.value.unshift(transaction);
+                            // Add transaction to the top of the list if we're on the first page
+                            if (currentPage.value === 1) {
+                                transactions.value.unshift(transaction);
+                                // Remove last item if we exceed per page limit
+                                if (transactions.value.length > perPage.value) {
+                                    transactions.value.pop();
+                                }
+                            } else {
+                                // If not on first page, reload first page to show new transaction
+                                loadTransactions(1);
+                            }
                         } else {
                             transactions.value[existingIndex] = transaction;
                         }

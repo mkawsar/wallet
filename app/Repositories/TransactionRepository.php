@@ -15,7 +15,7 @@ class TransactionRepository extends AbstractRepository
     /**
      * Get transactions for a user (both sent and received).
      */
-    public function getUserTransactions(int $userId, int $perPage = 50): LengthAwarePaginator
+    public function getUserTransactions(int $userId, int $perPage = 10): LengthAwarePaginator
     {
         return $this->query()
             ->where(function ($query) use ($userId) {

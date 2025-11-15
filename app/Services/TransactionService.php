@@ -20,14 +20,14 @@ class TransactionService
     /**
      * Get user transactions and balance.
      */
-    public function getUserTransactions(int $userId): array
+    public function getUserTransactions(int $userId, int $perPage = 10): array
     {
         $user = $this->userRepository->getUser($userId);
         if (! $user) {
             throw new \RuntimeException('User not found.');
         }
 
-        $transactions = $this->transactionRepository->getUserTransactions($userId);
+        $transactions = $this->transactionRepository->getUserTransactions($userId, $perPage);
 
         return [
             'balance' => (float) $user->balance,

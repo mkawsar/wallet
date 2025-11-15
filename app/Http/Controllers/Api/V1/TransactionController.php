@@ -22,8 +22,14 @@ class TransactionController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $request->validate([
+            'page' => 'sometimes|integer|min:1',
+            'per_page' => 'sometimes|integer|min:1|max:100',
+        ]);
+
         $userId = $request->user()->id;
-        $data = $this->transactionService->getUserTransactions($userId);
+        $perPage = (int) $request->input('per_page', 10);
+        $data = $this->transactionService->getUserTransactions($userId, $perPage);
 
         return response()->json([
             'balance' => $data['balance'],
