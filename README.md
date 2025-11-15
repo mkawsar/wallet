@@ -17,7 +17,7 @@ A high-performance digital wallet application built with Laravel and Vue.js, fea
 
 - **Backend**: Laravel 12
 - **Frontend**: Vue.js 3 (Composition API)
-- **Database**: MySQL/PostgreSQL/SQLite
+- **Database**: MySQL/PostgreSQL
 - **Real-time**: Pusher
 - **Authentication**: Laravel Sanctum
 
@@ -36,7 +36,7 @@ Before you begin, ensure you have the following installed:
 ### Step 1: Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/mkawsar/wallet
 cd wallet
 ```
 

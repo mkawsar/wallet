@@ -208,6 +208,7 @@ class TransactionServiceTest extends TestCase
             $this->service->executeTransfer($senderId, $receiverId, $amount);
         } catch (ValidationException $e) {
             $this->assertArrayHasKey('receiver_id', $e->errors());
+
             throw $e;
         }
     }
@@ -235,6 +236,7 @@ class TransactionServiceTest extends TestCase
             $this->service->executeTransfer($userId, $userId, $amount);
         } catch (ValidationException $e) {
             $this->assertArrayHasKey('receiver_id', $e->errors());
+
             throw $e;
         }
     }
@@ -281,6 +283,7 @@ class TransactionServiceTest extends TestCase
             $this->service->executeTransfer($senderId, $receiverId, $amount);
         } catch (ValidationException $e) {
             $this->assertArrayHasKey('amount', $e->errors());
+
             throw $e;
         }
     }

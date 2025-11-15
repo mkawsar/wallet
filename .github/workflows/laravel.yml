@@ -1,0 +1,71 @@
+name: Laravel
+
+on:
+  push:
+
+jobs:
+  laravel-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: shivammathur/setup-php@15c43e89cdef867065b0213be354c2841860869e
+      with:
+        php-version: '8.2'
+        extensions: mbstring, dom, fileinfo, mysql
+        coverage: xdebug
+        tools: pecl
+
+    - name: Install ODBC dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y unixodbc-dev
+
+    - uses: actions/checkout@v4
+
+    - name: Copy .env
+      run: php -r "file_exists('.env') || copy('.env.example', '.env');"
+
+    - name: Cache composer dependencies
+      uses: actions/cache@v3
+      with:
+        path: vendor
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: ${{ runner.os }}-composer-
+
+    - name: Install Dependencies
+      run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+
+    - name: Security Check
+      run: composer audit
+
+    - name: Generate key
+      run: php artisan key:generate
+
+    - name: Directory Permissions
+      run: chmod -R 777 storage bootstrap/cache
+
+    - name: Create Database
+      run: |
+        mkdir -p database
+        touch database/database.sqlite
+
+    - name: Laravel Pint
+      run: vendor/bin/pint --test
+
+    - name: Larastan (PHPStan for Laravel)
+      run: vendor/bin/phpstan analyse
+
+    - name: Execute tests (Unit and Feature tests) via Pest
+      env:
+        APP_ENV: testing
+        DB_CONNECTION: sqlite
+        DB_DATABASE: database/database.sqlite
+      run: |
+        set -o pipefail
+        # CI向け・色無効で安定した出力に
+        vendor/bin/pest --ci --stop-on-failure --colors=never | tee pest.out
+
+        # 失敗を示すパターンを検出したら明示的に exit 1
+        if grep -E "(^|\s)FAIL(\s|$)|⨯ |Failures:[[:space:]]*[1-9]|Errors:[[:space:]]*[1-9]" pest.out; then
+          echo "Detected failing tests → failing the step."
+          exit 1
+        fi
