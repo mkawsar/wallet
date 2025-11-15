@@ -48,21 +48,26 @@ jobs:
         mkdir -p database
         touch database/database.sqlite
 
+    - name: Run Migrations
+      env:
+        APP_ENV: testing
+        DB_CONNECTION: sqlite
+        DB_DATABASE: database/database.sqlite
+      run: php artisan migrate --force
+
     - name: Laravel Pint
       run: vendor/bin/pint --test
 
-    - name: Execute tests (Unit and Feature tests) via Pest
+    - name: Execute tests (Unit and Feature tests) via PHPUnit
       env:
         APP_ENV: testing
         DB_CONNECTION: sqlite
         DB_DATABASE: database/database.sqlite
       run: |
         set -o pipefail
-        # CI向け・色無効で安定した出力に
-        vendor/bin/pest --ci --stop-on-failure --colors=never | tee pest.out
+        php artisan test --stop-on-failure | tee test.out
 
-        # 失敗を示すパターンを検出したら明示的に exit 1
-        if grep -E "(^|\s)FAIL(\s|$)|⨯ |Failures:[[:space:]]*[1-9]|Errors:[[:space:]]*[1-9]" pest.out; then
+        if grep -E "(^|\s)FAIL(\s|$)|Failures:[[:space:]]*[1-9]|Errors:[[:space:]]*[1-9]" test.out; then
           echo "Detected failing tests → failing the step."
           exit 1
         fi
