@@ -59,8 +59,10 @@ Route::post('/logout', function (Request $request) {
 
 // Broadcasting authentication routes
 // Use custom controller to ensure JSON responses
+// Note: We handle authentication in the controller to support both Bearer tokens and session-based auth
+// The controller will check for Sanctum token first, then fall back to session auth
 Route::post('/broadcasting/auth', [BroadcastingController::class, 'authenticate'])
-    ->middleware(['web', 'auth:sanctum']);
+    ->middleware(['web']); // Web middleware for session support, but auth is handled in controller
 
 // Wallet route (requires authentication)
 Route::middleware('auth')->get('/wallet', function (Request $request) {

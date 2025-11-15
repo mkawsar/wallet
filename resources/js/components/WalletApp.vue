@@ -276,6 +276,8 @@ const initializeEcho = () => {
                 },
             },
             enabledTransports: ['ws', 'wss'],
+            // Don't set namespace - let Laravel Echo handle it automatically
+            // namespace: 'App.Events',
         });
 
         // Monitor Pusher connection state
@@ -549,14 +551,44 @@ const setupRealtimeListener = () => {
     // Wait for Pusher to be connected before subscribing
     const pusher = echo.connector.pusher;
     
-    if (pusher.connection.state !== 'connected') {
-        console.log('Waiting for Pusher connection...');
-        pusher.connection.bind('connected', () => {
-            console.log('Pusher connected, setting up listener now...');
+    // Helper function to wait for connection
+    const waitForConnection = (callback, maxAttempts = 10) => {
+        let attempts = 0;
+        const checkConnection = () => {
+            attempts++;
+            if (pusher.connection.state === 'connected') {
+                callback();
+            } else if (attempts < maxAttempts) {
+                setTimeout(checkConnection, 500);
+            } else {
+                console.error('❌ Pusher connection timeout after', maxAttempts * 500, 'ms');
+                pusherConnectionError.value = 'Connection timeout - Pusher failed to connect';
+                pusherConnectionStatus.value = 'error';
+            }
+        };
+        checkConnection();
+    };
+
+    // Subscribe to channel when Pusher is connected
+    if (pusher.connection.state === 'connected') {
+        subscribeToChannel();
+    } else {
+        console.log('Waiting for Pusher connection... Current state:', pusher.connection.state);
+        
+        // Set up one-time connection listener
+        const connectionHandler = () => {
+            console.log('✅ Pusher connected, setting up listener now...');
+            pusher.connection.unbind('connected', connectionHandler);
+            subscribeToChannel();
+        };
+        
+        pusher.connection.bind('connected', connectionHandler);
+        
+        // Also set a timeout fallback
+        waitForConnection(() => {
+            pusher.connection.unbind('connected', connectionHandler);
             subscribeToChannel();
         });
-    } else {
-        subscribeToChannel();
     }
 
     function subscribeToChannel() {
@@ -565,43 +597,69 @@ const setupRealtimeListener = () => {
             console.log('🔔 Setting up listener for channel:', channelName);
             console.log('Current Pusher state:', pusher.connection.state);
             
+            // Ensure we're connected before subscribing
+            if (pusher.connection.state !== 'connected') {
+                console.warn('⚠️ Pusher not connected, cannot subscribe to channel');
+                pusherConnectionError.value = 'Pusher not connected';
+                return;
+            }
+            
             const channel = echo.private(channelName);
 
             // Listen for subscription success
             channel.subscribed(() => {
                 console.log('✅ Successfully subscribed to channel:', channelName);
                 pusherConnectionStatus.value = 'subscribed';
+                pusherConnectionError.value = '';
             });
 
             // Listen for subscription errors
             channel.error((error) => {
                 console.error('❌ Channel subscription error:', error);
-                pusherConnectionError.value = `Subscription error: ${error?.message || JSON.stringify(error)}`;
+                const errorMsg = error?.message || error?.error?.message || JSON.stringify(error);
+                pusherConnectionError.value = `Subscription error: ${errorMsg}`;
+                
+                // Check if it's an authentication error
+                if (errorMsg.includes('auth') || errorMsg.includes('401') || errorMsg.includes('403') || 
+                    errorMsg.includes('Unauthorized') || errorMsg.includes('Unauthenticated')) {
+                    console.error('❌ Authentication failed for channel subscription');
+                    console.error('Check:', {
+                        'has_token': !!authToken,
+                        'token_preview': authToken ? `${authToken.substring(0, 20)}...` : 'none',
+                        'channel': channelName,
+                        'user_id': user.value?.id,
+                    });
+                    pusherConnectionError.value = `Authentication failed: ${errorMsg}. Please check your token.`;
+                }
             });
 
-            // Listen for the transaction completed event
-            // Note: Laravel Echo automatically prefixes with the app name, but we use .transaction.completed
-            // The actual event name from broadcastAs() is 'transaction.completed'
-            channel.listen('.transaction.completed', (data) => {
-                console.log('🎉 Transaction completed event received:', data);
-                console.log('Event data transaction:', data.transaction);
+            // Handle transaction completed event
+            // When using broadcastAs(), Laravel Echo automatically prefixes private channel events with a dot
+            const handleTransactionEvent = (data, eventSource = '') => {
+                console.log(`🎉 Transaction completed event received ${eventSource}:`, data);
+                
+                if (!data || !data.transaction) {
+                    console.warn('⚠️ Event data missing transaction:', data);
+                    return;
+                }
                 
                 const transaction = data.transaction;
+                console.log('Event transaction data:', transaction);
 
                 // Update balance and history if this transaction affects the user
                 if (transaction.sender_id === user.value.id || transaction.receiver_id === user.value.id) {
-                    console.log('Transaction affects current user, updating UI...');
+                    console.log('✅ Transaction affects current user, updating UI...');
                     
                     // Check if transaction already exists in the list (to avoid duplicates)
                     const existingIndex = transactions.value.findIndex(t => t.id === transaction.id);
                     
                     if (existingIndex === -1) {
                         // Add transaction to the top of the list immediately
-                        console.log('Adding new transaction to list');
+                        console.log('➕ Adding new transaction to list');
                         transactions.value.unshift(transaction);
                     } else {
                         // Update existing transaction
-                        console.log('Updating existing transaction in list');
+                        console.log('🔄 Updating existing transaction in list');
                         transactions.value[existingIndex] = transaction;
                     }
                     
@@ -611,34 +669,37 @@ const setupRealtimeListener = () => {
                         loadUser(),
                         loadTransactions()
                     ]).catch(error => {
-                        console.error('Error refreshing data after transaction:', error);
+                        console.error('❌ Error refreshing data after transaction:', error);
                         // Fallback: just reload transactions
                         loadTransactions();
                     });
                 } else {
-                    console.log('Transaction does not affect current user');
+                    console.log('ℹ️ Transaction does not affect current user');
                 }
+            };
+
+            // Primary listener: When using broadcastAs(), Laravel Echo prefixes private channel events with a dot
+            // So 'transaction.completed' becomes '.transaction.completed' on private channels
+            channel.listen('.transaction.completed', (data) => {
+                handleTransactionEvent(data, '(primary listener)');
             });
 
-            // Also try listening without the dot prefix (some configurations)
-            channel.listen('transaction.completed', (data) => {
-                console.log('🎉 Transaction completed event received (without dot):', data);
-                // Same handling as above
-                const transaction = data.transaction;
-                if (transaction.sender_id === user.value.id || transaction.receiver_id === user.value.id) {
-                    const existingIndex = transactions.value.findIndex(t => t.id === transaction.id);
-                    if (existingIndex === -1) {
-                        transactions.value.unshift(transaction);
-                    } else {
-                        transactions.value[existingIndex] = transaction;
-                    }
-                    Promise.all([loadUser(), loadTransactions()]).catch(() => loadTransactions());
-                }
-            });
-
-            // Debug: Log all events on this channel
+            // Debug: Log ALL events on this channel to see what's actually being received
+            // This helps identify the exact event name being broadcast
             channel.listenToAll((eventName, data) => {
-                console.log('📡 Event received on channel:', eventName, data);
+                console.log('📡 Event received on channel:', {
+                    eventName: eventName,
+                    hasTransaction: !!(data?.transaction),
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Handle transaction events that might come with different names
+                if (eventName === '.transaction.completed' || 
+                    eventName === 'transaction.completed' ||
+                    eventName.includes('transaction.completed')) {
+                    console.log('🔍 Transaction event detected via listenToAll:', eventName);
+                    handleTransactionEvent(data, `(listenToAll: ${eventName})`);
+                }
             });
 
         } catch (error) {
