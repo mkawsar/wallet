@@ -181,9 +181,7 @@ The application will be available at: `http://localhost:8000`
 
 1. **Open your browser** and navigate to: `http://localhost:8000`
 
-2. **Login** with one of the test users you created:
-   - Email: `john@example.com`
-   - Password: `password`
+2. **Login** with one of the test users you created
 
 3. **Navigate to the wallet page**: `http://localhost:8000/wallet`
 
