@@ -51,7 +51,7 @@ class UserRepository extends AbstractRepository
     public function search(string $query, int $limit = 10): \Illuminate\Database\Eloquent\Collection
     {
         $currentUserId = request()->user()->id;
-        
+
         return $this->query()
             ->where('id', '!=', $currentUserId) // Exclude current user
             ->where(function ($q) use ($query) {

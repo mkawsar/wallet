@@ -66,6 +66,12 @@ class TransactionController extends Controller
                 'errors' => $e->errors(),
             ], 422);
         } catch (\Exception $e) {
+            \Log::error('Transaction failed', [
+                'sender_id' => $request->user()->id,
+                'receiver_id' => $request->input('receiver_id'),
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'message' => $e->getMessage(),
             ], 500);

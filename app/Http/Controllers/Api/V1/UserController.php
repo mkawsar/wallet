@@ -30,7 +30,7 @@ class UserController extends Controller
     public function search(Request $request): JsonResponse
     {
         $query = $request->input('q', '');
-        
+
         if (strlen($query) < 2) {
             return response()->json(['data' => []]);
         }

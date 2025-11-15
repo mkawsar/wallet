@@ -1,10 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\BroadcastingController;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
 
@@ -13,6 +11,7 @@ Route::get('/', function () {
     if (Auth::check()) {
         return redirect()->route('wallet');
     }
+
     return redirect()->route('login');
 });
 
@@ -21,6 +20,7 @@ Route::get('/login', function () {
     if (Auth::check()) {
         return redirect()->route('wallet');
     }
+
     return view('login');
 })->name('login');
 
@@ -41,6 +41,7 @@ Route::post('/login', function (Request $request) {
 
     if (Auth::attempt($credentials, $remember)) {
         $request->session()->regenerate();
+
         return redirect()->intended(route('wallet'));
     }
 
@@ -54,6 +55,7 @@ Route::post('/logout', function (Request $request) {
     Auth::logout();
     $request->session()->invalidate();
     $request->session()->regenerateToken();
+
     return redirect()->route('login');
 })->name('logout');
 
