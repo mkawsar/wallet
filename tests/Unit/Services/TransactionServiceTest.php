@@ -52,7 +52,7 @@ class TransactionServiceTest extends TestCase
         $paginator = Mockery::mock(LengthAwarePaginator::class);
 
         $this->userRepositoryMock
-            ->shouldReceive('getUser')
+            ->shouldReceive('find')
             ->once()
             ->with($userId)
             ->andReturn($user);
@@ -74,7 +74,7 @@ class TransactionServiceTest extends TestCase
         $userId = 999;
 
         $this->userRepositoryMock
-            ->shouldReceive('getUser')
+            ->shouldReceive('find')
             ->once()
             ->with($userId)
             ->andReturn(null);
@@ -133,13 +133,13 @@ class TransactionServiceTest extends TestCase
 
         // Mock locked users
         $this->userRepositoryMock
-            ->shouldReceive('findWithLock')
+            ->shouldReceive('lockForUpdate')
             ->once()
             ->with($senderId)
             ->andReturn($sender);
 
         $this->userRepositoryMock
-            ->shouldReceive('findWithLock')
+            ->shouldReceive('lockForUpdate')
             ->once()
             ->with($receiverId)
             ->andReturn($receiver);
@@ -266,13 +266,13 @@ class TransactionServiceTest extends TestCase
             ->andReturn($receiver);
 
         $this->userRepositoryMock
-            ->shouldReceive('findWithLock')
+            ->shouldReceive('lockForUpdate')
             ->once()
             ->with($senderId)
             ->andReturn($sender);
 
         $this->userRepositoryMock
-            ->shouldReceive('findWithLock')
+            ->shouldReceive('lockForUpdate')
             ->once()
             ->with($receiverId)
             ->andReturn($receiver);
@@ -307,7 +307,7 @@ class TransactionServiceTest extends TestCase
             ->andReturn($receiver);
 
         $this->userRepositoryMock
-            ->shouldReceive('findWithLock')
+            ->shouldReceive('lockForUpdate')
             ->once()
             ->with($senderId)
             ->andThrow(new \Exception('Database error'));

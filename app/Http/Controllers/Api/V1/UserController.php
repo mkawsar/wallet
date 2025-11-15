@@ -19,7 +19,7 @@ class UserController extends Controller
      */
     public function show(Request $request): JsonResponse
     {
-        $user = $this->userRepository->getUser($request->user()->id);
+        $user = $this->userRepository->find($request->user()->id);
 
         return response()->json(new UserResource($user));
     }

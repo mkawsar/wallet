@@ -22,7 +22,7 @@ class TransactionService
      */
     public function getUserTransactions(int $userId, int $perPage = 10): array
     {
-        $user = $this->userRepository->getUser($userId);
+        $user = $this->userRepository->find($userId);
         if (! $user) {
             throw new \RuntimeException('User not found.');
         }
@@ -66,14 +66,14 @@ class TransactionService
             DB::beginTransaction();
 
             // Lock sender and receiver rows for update to prevent race conditions
-            $sender = $this->userRepository->findWithLock($senderId);
+            $sender = $this->userRepository->lockForUpdate($senderId);
             if (! $sender) {
                 throw ValidationException::withMessages([
                     'sender_id' => ['Sender not found.'],
                 ]);
             }
 
-            $receiver = $this->userRepository->findWithLock($receiverId);
+            $receiver = $this->userRepository->lockForUpdate($receiverId);
             if (! $receiver) {
                 throw ValidationException::withMessages([
                     'receiver_id' => ['Receiver not found.'],

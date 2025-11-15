@@ -12,14 +12,6 @@ class UserRepository extends AbstractRepository
     }
 
     /**
-     * Find user by ID with lock for update.
-     */
-    public function findWithLock(int $id): ?User
-    {
-        return $this->lockForUpdate($id);
-    }
-
-    /**
      * Find user by email.
      */
     public function findByEmail(string $email): ?User
@@ -35,14 +27,6 @@ class UserRepository extends AbstractRepository
         $user->balance += $amount;
 
         return $user->save();
-    }
-
-    /**
-     * Get user by ID.
-     */
-    public function getUser(int $userId): ?User
-    {
-        return $this->find($userId);
     }
 
     /**

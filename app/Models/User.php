@@ -67,14 +67,4 @@ class User extends Authenticatable
     {
         return $this->hasMany(Transaction::class, 'receiver_id');
     }
-
-    /**
-     * Get all transactions (both sent and received).
-     */
-    public function transactions()
-    {
-        return Transaction::where('sender_id', $this->id)
-            ->orWhere('receiver_id', $this->id)
-            ->orderBy('created_at', 'desc');
-    }
 }

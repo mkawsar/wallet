@@ -40,9 +40,9 @@ abstract class AbstractRepository
     }
 
     /**
-     * Find records by criteria.
+     * Build query from criteria.
      */
-    public function findBy(array $criteria, array $columns = ['*']): Collection
+    protected function buildQueryFromCriteria(array $criteria)
     {
         $query = $this->model->newQuery();
 
@@ -50,7 +50,15 @@ abstract class AbstractRepository
             $query->where($field, $value);
         }
 
-        return $query->get($columns);
+        return $query;
+    }
+
+    /**
+     * Find records by criteria.
+     */
+    public function findBy(array $criteria, array $columns = ['*']): Collection
+    {
+        return $this->buildQueryFromCriteria($criteria)->get($columns);
     }
 
     /**
@@ -58,13 +66,7 @@ abstract class AbstractRepository
      */
     public function findOneBy(array $criteria, array $columns = ['*']): ?Model
     {
-        $query = $this->model->newQuery();
-
-        foreach ($criteria as $field => $value) {
-            $query->where($field, $value);
-        }
-
-        return $query->first($columns);
+        return $this->buildQueryFromCriteria($criteria)->first($columns);
     }
 
     /**
