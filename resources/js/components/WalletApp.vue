@@ -19,20 +19,67 @@
             <div class="bg-white rounded-lg shadow-md p-6 mb-6">
                 <h2 class="text-xl font-semibold text-gray-900 mb-4">Send Money</h2>
                 <form @submit.prevent="sendMoney" class="space-y-4">
-                    <div>
-                        <label for="receiver_id" class="block text-sm font-medium text-gray-700 mb-1">
-                            Recipient User ID
+                    <div class="relative">
+                        <label for="receiver_search" class="block text-sm font-medium text-gray-700 mb-1">
+                            Recipient
                         </label>
-                        <input
-                            id="receiver_id"
-                            v-model.number="transferForm.receiver_id"
-                            type="number"
-                            min="1"
-                            required
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            :class="{ 'border-red-500': errors.receiver_id }"
-                            placeholder="Enter recipient user ID"
-                        />
+                        <div class="relative">
+                            <input
+                                id="receiver_search"
+                                v-model="receiverSearch"
+                                type="text"
+                                @input="searchUsers"
+                                @focus="showDropdown = true"
+                                @blur="handleBlur"
+                                autocomplete="off"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                :class="{ 'border-red-500': errors.receiver_id }"
+                                placeholder="Search by ID, name, or email"
+                            />
+                            <div v-if="searchingUsers" class="absolute right-3 top-2.5">
+                                <svg class="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        
+                        <!-- Dropdown Results -->
+                        <div
+                            v-if="showDropdown && (searchResults.length > 0 || receiverSearch.length >= 2)"
+                            class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+                        >
+                            <div v-if="searchResults.length === 0 && receiverSearch.length >= 2 && !searchingUsers" class="p-3 text-sm text-gray-500 text-center">
+                                No users found
+                            </div>
+                            <div
+                                v-for="result in searchResults"
+                                :key="result.id"
+                                @mousedown="selectUser(result)"
+                                class="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            >
+                                <div class="font-medium text-gray-900">{{ result.name }}</div>
+                                <div class="text-sm text-gray-500">ID: {{ result.id }} | {{ result.email }}</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Selected User Display -->
+                        <div v-if="selectedReceiver" class="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <span class="font-medium text-gray-900">{{ selectedReceiver.name }}</span>
+                                    <span class="text-sm text-gray-500 ml-2">(ID: {{ selectedReceiver.id }})</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    @click="clearReceiver"
+                                    class="text-red-600 hover:text-red-800 text-sm"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                        </div>
+                        
                         <p v-if="errors.receiver_id" class="mt-1 text-sm text-red-600">{{ errors.receiver_id }}</p>
                     </div>
 
@@ -156,26 +203,43 @@ if (authToken && authToken !== 'null' && authToken !== '') {
 // Pusher configuration
 window.Pusher = Pusher;
 
-// Initialize Echo only if we have an auth token
+// Initialize Echo - will be set up after user loads
 let echo = null;
-if (authToken && authToken !== 'null' && authToken !== '') {
+
+const initializeEcho = () => {
+    if (!authToken || authToken === 'null' || authToken === '') {
+        return;
+    }
+
+    // Disconnect existing connection if any
+    if (echo) {
+        try {
+            echo.disconnect();
+        } catch (e) {
+            console.error('Error disconnecting Echo:', e);
+        }
+    }
+
     try {
         echo = new Echo({
             broadcaster: 'pusher',
             key: import.meta.env.VITE_PUSHER_APP_KEY || 'your-pusher-key',
             cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER || 'mt1',
             forceTLS: true,
+            encrypted: true,
             authEndpoint: '/broadcasting/auth',
             auth: {
                 headers: {
                     Authorization: `Bearer ${authToken}`,
+                    Accept: 'application/json',
                 },
             },
         });
+        console.log('Echo initialized successfully');
     } catch (error) {
         console.error('Error initializing Pusher:', error);
     }
-}
+};
 
 const user = ref(null);
 const balance = ref(0);
@@ -194,6 +258,14 @@ const errors = ref({
     receiver_id: '',
     amount: '',
 });
+
+// Recipient search
+const receiverSearch = ref('');
+const searchResults = ref([]);
+const selectedReceiver = ref(null);
+const showDropdown = ref(false);
+const searchingUsers = ref(false);
+let searchTimeout = null;
 
 // Format currency
 const formatCurrency = (value) => {
@@ -220,6 +292,66 @@ const formatDate = (dateString) => {
 // Get CSRF token for template
 const getCsrfToken = () => {
     return csrfToken || '';
+};
+
+// Search users
+const searchUsers = async () => {
+    // Clear selected receiver if search changes
+    if (selectedReceiver.value && receiverSearch.value !== `${selectedReceiver.value.name} (${selectedReceiver.value.email})`) {
+        selectedReceiver.value = null;
+        transferForm.value.receiver_id = null;
+    }
+
+    // Clear timeout if user is still typing
+    if (searchTimeout) {
+        clearTimeout(searchTimeout);
+    }
+
+    // Don't search if query is too short
+    if (receiverSearch.value.length < 2) {
+        searchResults.value = [];
+        return;
+    }
+
+    // Debounce search
+    searchTimeout = setTimeout(async () => {
+        searchingUsers.value = true;
+        try {
+            const response = await axios.get('/api/users/search', {
+                params: { q: receiverSearch.value }
+            });
+            searchResults.value = response.data.data || [];
+        } catch (error) {
+            console.error('Error searching users:', error);
+            searchResults.value = [];
+        } finally {
+            searchingUsers.value = false;
+        }
+    }, 300);
+};
+
+// Select a user from search results
+const selectUser = (user) => {
+    selectedReceiver.value = user;
+    transferForm.value.receiver_id = user.id;
+    receiverSearch.value = `${user.name} (${user.email})`;
+    showDropdown.value = false;
+    searchResults.value = [];
+};
+
+// Clear selected receiver
+const clearReceiver = () => {
+    selectedReceiver.value = null;
+    transferForm.value.receiver_id = null;
+    receiverSearch.value = '';
+    searchResults.value = [];
+};
+
+// Handle blur event with delay to allow click on dropdown
+const handleBlur = () => {
+    setTimeout(() => {
+        showDropdown.value = false;
+    }, 200);
 };
 
 // Load user data
@@ -276,7 +408,7 @@ const sendMoney = async () => {
 
     // Validate form
     if (!transferForm.value.receiver_id || transferForm.value.receiver_id <= 0) {
-        errors.value.receiver_id = 'Please enter a valid recipient ID';
+        errors.value.receiver_id = 'Please select a recipient';
         return;
     }
 
@@ -305,6 +437,7 @@ const sendMoney = async () => {
 
         // Reset form
         transferForm.value = { receiver_id: null, amount: null };
+        clearReceiver();
 
         // Clear message after 5 seconds
         setTimeout(() => {
@@ -332,12 +465,19 @@ const sendMoney = async () => {
 
 // Listen for real-time transaction updates
 const setupRealtimeListener = () => {
-    if (!user.value || !authToken || !echo) return;
+    if (!user.value || !authToken || !echo) {
+        console.log('Cannot setup listener - user:', !!user.value, 'authToken:', !!authToken, 'echo:', !!echo);
+        return;
+    }
 
     try {
-        const channel = echo.private(`user.${user.value.id}`);
+        const channelName = `user.${user.value.id}`;
+        console.log('Setting up listener for channel:', channelName);
+        
+        const channel = echo.private(channelName);
 
         channel.listen('.transaction.completed', (data) => {
+            console.log('Transaction completed event received:', data);
             const transaction = data.transaction;
 
             // Update balance if this transaction affects the user
@@ -345,6 +485,16 @@ const setupRealtimeListener = () => {
                 // Reload transactions to get updated balance
                 loadTransactions();
             }
+        });
+
+        // Listen for subscription success
+        channel.subscribed(() => {
+            console.log('Subscribed to channel:', channelName);
+        });
+
+        // Listen for subscription errors
+        channel.error((error) => {
+            console.error('Channel subscription error:', error);
         });
     } catch (error) {
         console.error('Error setting up real-time listener:', error);
@@ -356,9 +506,17 @@ onMounted(async () => {
     // Check if we have a valid auth token
     if (authToken && authToken !== 'null' && authToken !== '') {
         try {
+            // Initialize Echo first
+            initializeEcho();
+            
+            // Load user data
             await loadUser();
-            await loadTransactions();
+            
+            // Setup real-time listener after user is loaded
             setupRealtimeListener();
+            
+            // Load transactions
+            await loadTransactions();
         } catch (error) {
             console.error('Error initializing wallet:', error);
             message.value = 'Error loading wallet data. Please refresh the page.';

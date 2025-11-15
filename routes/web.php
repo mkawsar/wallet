@@ -3,6 +3,7 @@
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
 
@@ -54,6 +55,9 @@ Route::post('/logout', function (Request $request) {
     $request->session()->regenerateToken();
     return redirect()->route('login');
 })->name('logout');
+
+// Broadcasting authentication routes
+Broadcast::routes(['middleware' => ['web', 'auth:sanctum']]);
 
 // Wallet route (requires authentication)
 Route::middleware('auth')->get('/wallet', function (Request $request) {

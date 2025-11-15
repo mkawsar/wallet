@@ -44,4 +44,28 @@ class UserRepository extends AbstractRepository
     {
         return $this->find($userId);
     }
+
+    /**
+     * Search users by ID, name, or email.
+     */
+    public function search(string $query, int $limit = 10): \Illuminate\Database\Eloquent\Collection
+    {
+        $currentUserId = request()->user()->id;
+        
+        return $this->query()
+            ->where('id', '!=', $currentUserId) // Exclude current user
+            ->where(function ($q) use ($query) {
+                // If query is numeric, search by ID
+                if (is_numeric($query)) {
+                    $q->where('id', $query);
+                } else {
+                    // Otherwise search by name or email
+                    $q->where('name', 'like', "%{$query}%")
+                        ->orWhere('email', 'like', "%{$query}%");
+                }
+            })
+            ->select('id', 'name', 'email')
+            ->limit($limit)
+            ->get();
+    }
 }

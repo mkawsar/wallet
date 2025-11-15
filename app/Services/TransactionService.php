@@ -110,8 +110,13 @@ class TransactionService
             // Load transaction with relationships
             $transaction = $this->transactionRepository->findWithRelations($transaction->id);
 
-            // Broadcast event to both sender and receiver
-            broadcast(new TransactionCompleted($transaction))->toOthers();
+            // Broadcast event to both sender and receiver (synchronously for immediate delivery)
+            try {
+                broadcast(new TransactionCompleted($transaction))->toOthers();
+            } catch (\Exception $e) {
+                // Log but don't fail the transaction if broadcasting fails
+                \Log::error('Broadcasting failed: ' . $e->getMessage());
+            }
 
             return [
                 'transaction' => $transaction,

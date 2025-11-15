@@ -23,4 +23,28 @@ class UserController extends Controller
 
         return response()->json(new UserResource($user));
     }
+
+    /**
+     * Search users by ID, name, or email.
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $query = $request->input('q', '');
+        
+        if (strlen($query) < 2) {
+            return response()->json(['data' => []]);
+        }
+
+        $users = $this->userRepository->search($query, 10);
+
+        return response()->json([
+            'data' => $users->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                ];
+            }),
+        ]);
+    }
 }
