@@ -114,11 +114,17 @@ class TransactionService
             // Broadcast event to both sender and receiver (synchronously for immediate delivery)
             try {
                 $broadcastDriver = config('broadcasting.default');
-                \Log::info('Broadcasting transaction', [
+                $senderChannel = 'private-user.'.$transaction->sender_id;
+                $receiverChannel = 'private-user.'.$transaction->receiver_id;
+                
+                \Log::info('📡 Broadcasting transaction event', [
                     'transaction_id' => $transaction->id,
                     'sender_id' => $transaction->sender_id,
                     'receiver_id' => $transaction->receiver_id,
                     'broadcast_driver' => $broadcastDriver,
+                    'sender_channel' => $senderChannel,
+                    'receiver_channel' => $receiverChannel,
+                    'event_name' => 'transaction.completed',
                     'pusher_key' => $broadcastDriver === 'pusher' ? (config('broadcasting.connections.pusher.key') ? 'configured' : 'missing') : 'n/a',
                 ]);
 
@@ -126,17 +132,32 @@ class TransactionService
                 $event = new TransactionCompleted($transaction);
                 broadcast($event);
 
-                \Log::info('Transaction broadcast sent successfully', [
+                \Log::info('✅ Transaction broadcast sent successfully', [
                     'transaction_id' => $transaction->id,
-                    'channels' => ['user.'.$transaction->sender_id, 'user.'.$transaction->receiver_id],
+                    'channels' => [
+                        'sender' => $senderChannel,
+                        'receiver' => $receiverChannel,
+                    ],
+                    'note' => 'Both sender and receiver should be subscribed to their respective channels to receive this event',
                 ]);
             } catch (\Exception $e) {
                 // Log but don't fail the transaction if broadcasting fails
-                \Log::error('Broadcasting failed', [
+                $errorMessage = $e->getMessage();
+                $isTimestampError = str_contains($errorMessage, 'Timestamp expired') || 
+                                    str_contains($errorMessage, 'timestamp');
+                
+                \Log::error('❌ Broadcasting failed', [
                     'transaction_id' => $transaction->id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
+                    'error' => $errorMessage,
+                    'is_timestamp_error' => $isTimestampError,
+                    'server_time' => now()->toIso8601String(),
+                    'server_timezone' => config('app.timezone'),
                 ]);
+                
+                // If it's a timestamp error, provide helpful message
+                if ($isTimestampError) {
+                    \Log::warning('⚠️ Server time may be out of sync with Pusher. Please sync your system clock using NTP.');
+                }
             }
 
             return [
