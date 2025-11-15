@@ -60,7 +60,7 @@ class TransactionServiceTest extends TestCase
         $this->transactionRepositoryMock
             ->shouldReceive('getUserTransactions')
             ->once()
-            ->with($userId)
+            ->with($userId, 10) // Default perPage is 10
             ->andReturn($paginator);
 
         $result = $this->service->getUserTransactions($userId);

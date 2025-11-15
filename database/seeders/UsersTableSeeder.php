@@ -17,7 +17,7 @@ class UsersTableSeeder extends Seeder
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'password' => \Illuminate\Support\Facades\Hash::make('password'),
-            'balance' => 0,
+            'balance' => fake()->randomFloat(2, 100, 10000), // Random balance between 100 and 10,000
         ]);
     }
 }
